@@ -1,0 +1,2 @@
+# LearnOpenVino
+OpenVinoについて勉強するためのリポジトリ
