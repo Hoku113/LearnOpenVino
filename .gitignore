@@ -132,3 +132,5 @@ dmypy.json
 output/
 
 .openvino-venv/
+data/
+model/
