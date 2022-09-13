@@ -133,4 +133,3 @@ output/
 
 .openvino-venv/
 data/
-model/
