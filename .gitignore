@@ -128,8 +128,18 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Image directory
-output/
-
+# Virtual environmet
 .openvino-venv/
+
+# dataset
+output/
+kits19_frames_1/
 data/
+
+# AI model
+model/
+pretrained_model/
+
+# openvino model zoo
+intel/ 
+public/
