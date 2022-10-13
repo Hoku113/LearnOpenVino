@@ -1,5 +1,3 @@
-from sqlite3 import connect
-from tkinter import W
 import numpy as np
 
 
@@ -8,14 +6,13 @@ class OpenPoseDecoder:
     BODY_PARTS_KPT_IDS = ((1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6, 7), (1, 8), (8, 9), (9, 10), (1, 11),
                           (11, 12), (12, 13), (1, 0), (0, 14), (14, 16), (0, 15), (15, 17), (2, 16), (5, 17))
 
-    BODY_PARTS_PAF_IDS = (12, 20, 14, 16, 22, 24, 0, 2, 4,
-                          6, 8, 10, 28, 30, 34, 32, 36, 18, 26)
+    BODY_PARTS_PAF_IDS = (12, 20, 14, 16, 22, 24, 0, 2, 4, 6, 8, 10, 28, 30, 34, 32, 36, 18, 26)
 
-    def __init__(self, num_joints=18, skelton=BODY_PARTS_KPT_IDS, paf_indices=BODY_PARTS_PAF_IDS,
+    def __init__(self, num_joints=18, skeleton=BODY_PARTS_KPT_IDS, paf_indices=BODY_PARTS_PAF_IDS,
                  max_points=100, score_threshold=0.1, min_paf_alignment_score=0.05, delta=0.5):
 
         self.num_joints = num_joints
-        self.skeleton = skelton
+        self.skeleton = skeleton
         self.paf_indices = paf_indices
         self.max_points = max_points
         self.score_threshold = score_threshold
@@ -23,8 +20,7 @@ class OpenPoseDecoder:
         self.delta = delta
 
         self.points_per_limb = 10
-        self.grid = np.arange(self.points_per_limb,
-                              dtype=np.float32).reshape(1, -1, 1)
+        self.grid = np.arange(self.points_per_limb, dtype=np.float32).reshape(1, -1, 1)
 
     def __call__(self, heatmaps, nms_heatmaps, pafs):
         batch_size, _, h, w = heatmaps.shape
@@ -45,7 +41,7 @@ class OpenPoseDecoder:
 
         if len(poses) > 0:
             poses = np.asarray(poses, dtype=np.float32)
-            scores = poses.reshape((poses.shape[0], -1, 3))
+            poses = poses.reshape((poses.shape[0], -1, 3))
         else:
             poses = np.empty((0, 17, 3), dtype=np.float32)
             scores = np.empty(0, dtype=np.float32)
@@ -88,9 +84,9 @@ class OpenPoseDecoder:
 
     def top_k(self, heatmaps):
         N, K, _, W = heatmaps.shape
+        heatmaps = heatmaps.reshape(N, K, -1)
 
-        ind = heatmaps.argpartition(-self.max_points,
-                                    axis=2)[:, :, -self.max_points]
+        ind = heatmaps.argpartition(-self.max_points,axis=2)[:, :, -self.max_points:]
         scores = np.take_along_axis(heatmaps, ind, axis=2)
         subind = np.argsort(-scores, axis=2)
         ind = np.take_along_axis(ind, subind, axis=2)
@@ -101,19 +97,19 @@ class OpenPoseDecoder:
     @staticmethod
     def refine(heatmap, x, y):
         h, w = heatmap.shape[-2:]
-        valid = np.logical_and(np.logical_and(
-            x > 0, x < w - 1), np.logical_and(y > 0, y < h - 1))
+        valid = np.logical_and(np.logical_and(x > 0, x < w - 1), np.logical_and(y > 0, y < h - 1))
         xx = x[valid]
         yy = y[valid]
-        dx = np.sign(heatmap[yy, xx + 1] - heatmap[yy,
-                     xx - 1], dtype=np.float32) * 0.25
-        dy = np.sign(heatmap[yy + 1, xx] -
-                     heatmap[yy - 1, xx], dtype=np.float32) * 0.25
+        dx = np.sign(heatmap[yy, xx + 1] - heatmap[yy, xx - 1], dtype=np.float32) * 0.25
+        dy = np.sign(heatmap[yy + 1, xx] - heatmap[yy - 1, xx], dtype=np.float32) * 0.25
         x = x.astype(np.float32)
         y = y.astype(np.float32)
+        x[valid] += dx
+        y[valid] += dy
 
         return x, y
 
+    @staticmethod
     def is_disjoint(pose_a, pose_b):
         pose_a = pose_a[:-2]
         pose_b = pose_b[:-2]
@@ -131,12 +127,11 @@ class OpenPoseDecoder:
 
             if pose_a_idx < 0 and pose_b_idx < 0:
 
-                pose_entry = np.full(pose_entry_size - 1, dtype=np.float32)
+                pose_entry = np.full(pose_entry_size, -1, dtype=np.float32)
                 pose_entry[kpt_a_id] = connection[0]
                 pose_entry[kpt_b_id] = connection[1]
                 pose_entry[-1] = 2
-                pose_entry[-2] = np.sum(all_keypoints[connection[0:2], 2]
-                                        ) + connection[2]
+                pose_entry[-2] = np.sum(all_keypoints[connection[0:2], 2]) + connection[2]
                 pose_entries.append(pose_entry)
 
             elif pose_a_idx >= 0 and pose_b_idx >= 0 and pose_a_idx != pose_b_idx:
@@ -148,6 +143,9 @@ class OpenPoseDecoder:
                     pose_a[:2] += 1
                     pose_a[-2] += connection[2]
                     del pose_entries[pose_b_idx]
+
+            elif pose_a_idx >= 0 and pose_b_idx >= 0:
+                pose_entries[pose_a_idx][-2] += connection[2]
 
             elif pose_a_idx >= 0:
                 pose = pose_entries[pose_a_idx]
@@ -217,23 +215,19 @@ class OpenPoseDecoder:
             field = part_pafs[y, x].reshape(-1, self.points_per_limb, 2)
             vec_norm = np.linalg.norm(vec_raw, ord=2, axis=-1, keepdims=True)
             vec = vec_raw / (vec_norm + 1e-6)
-            affinity_scores = (
-                field * vec).sum(-1).reshape(-1, self.points_per_limb)
+            affinity_scores = (field * vec).sum(-1).reshape(-1, self.points_per_limb)
             valid_affinity_scores = affinity_scores > self.min_paf_alignment_score
             valid_num = valid_affinity_scores.sum(1)
-            affinity_scores = (
-                affinity_scores * valid_affinity_scores).sum(1) / (valid_num + 1e-6)
+            affinity_scores = (affinity_scores * valid_affinity_scores).sum(1) / (valid_num + 1e-6)
             success_ratio = valid_num / self.points_per_limb
 
-            valid_limbs = np.where(np.logical_and(
-                affinity_scores > 0, success_ratio > 0.8))[0]
+            valid_limbs = np.where(np.logical_and(affinity_scores > 0, success_ratio > 0.8))[0]
             if len(valid_limbs) == 0:
                 continue
             b_idx, a_idx = np.divmod(valid_limbs, n)
             affinity_scores = affinity_scores[valid_limbs]
 
-            a_idx, b_idx, affinity_scores = self.connections_nms(
-                a_idx, b_idx, affinity_scores)
+            a_idx, b_idx, affinity_scores = self.connections_nms(a_idx, b_idx, affinity_scores)
             connections = list(zip(kpts_a[a_idx, 3].astype(np.int32),
                                    kpts_b[b_idx, 3].astype(np.int32),
                                    affinity_scores))
@@ -244,6 +238,7 @@ class OpenPoseDecoder:
             pose_entries = self.update_poses(kpt_a_id, kpt_b_id, all_keypoints, connections, pose_entries, pose_entry_size)
         
         pose_entries = np.asarray(pose_entries, dtype=np.float32).reshape(-1, pose_entry_size)
+        pose_entries = pose_entries[pose_entries[:, -1] >= 3]
         return pose_entries, all_keypoints
 
     @staticmethod
