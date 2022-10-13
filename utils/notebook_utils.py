@@ -1,4 +1,7 @@
+import sys
 import os
+sys.path.append(os.pardir)
+
 import shutil
 import socket
 import threading
@@ -9,16 +12,15 @@ import urllib.request
 from os import PathLike
 from pathlib import Path
 from typing import Callable, List, NamedTuple, Optional, Tuple
-
 import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import openvino.inference_engine
-from async_pipeline import AsyncPipeline
+from utils.async_pipeline import AsyncPipeline
 from IPython.display import HTML, Image, Markdown, clear_output, display
 from matplotlib.lines import Line2D
-from models import model
+from utils.models import model
 from openvino.inference_engine import IECore
 from tqdm.notebook import tqdm_notebook
 
